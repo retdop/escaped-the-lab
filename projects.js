@@ -1,6 +1,13 @@
 // Project data — add new projects by appending objects to this array.
 const PROJECTS = [
   {
+    title: "Routine Tracker",
+    description:
+      "Plan and track strength & mobility training. Define focuses, pick exercises, and log your workouts.",
+    link: "projects/routine-tracker.html",
+    date: "2026-03",
+  },
+  {
     title: "Task Logger",
     description:
       "Track routine tasks like daily physiotherapy exercises. Add tasks with frequency, log completions, and monitor streaks.",

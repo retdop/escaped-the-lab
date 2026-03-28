@@ -31,6 +31,12 @@ jobs:
           pnpm install --frozen-lockfile
           npx vite build
 
+      - name: Build routine-tracker
+        working-directory: routine-tracker-source
+        run: |
+          pnpm install --frozen-lockfile
+          npx vite build
+
   validate-html:
     runs-on: ubuntu-latest
     steps:
