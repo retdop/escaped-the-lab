@@ -25,10 +25,22 @@ interface TrainingSession {
   entries: SessionEntry[];
 }
 
+interface RoutineEntry {
+  focusId: string;
+  exerciseId: string;
+}
+
+interface Routine {
+  id: string;
+  name: string;
+  entries: RoutineEntry[];
+}
+
 interface AppState {
   focuses: Focus[];
   exercises: Exercise[];
   sessions: TrainingSession[];
+  routines: Routine[];
 }
 
 // ---- Persistence ----
@@ -37,11 +49,14 @@ const STORAGE_KEY = "routine_tracker_data";
 function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as AppState;
+    if (raw) {
+      const parsed = JSON.parse(raw) as AppState;
+      return { routines: [], ...parsed };
+    }
   } catch {
     // ignore
   }
-  return { focuses: [], exercises: [], sessions: [] };
+  return { focuses: [], exercises: [], sessions: [], routines: [] };
 }
 
 function saveState(state: AppState): void {
@@ -193,7 +208,7 @@ export default function App() {
 }
 
 // ============================================================
-// LIBRARY TAB — manage focuses and exercises
+// LIBRARY TAB — manage focuses, exercises, and routines
 // ============================================================
 function LibraryTab({
   state,
@@ -229,6 +244,10 @@ function LibraryTab({
         ...s,
         entries: s.entries.filter((e) => e.focusId !== id),
       })),
+      routines: state.routines.map((r) => ({
+        ...r,
+        entries: r.entries.filter((e) => e.focusId !== id),
+      })),
     });
   }
 
@@ -248,6 +267,18 @@ function LibraryTab({
         ...s,
         entries: s.entries.filter((e) => e.exerciseId !== exId),
       })),
+      routines: state.routines.map((r) => ({
+        ...r,
+        entries: r.entries.filter((e) => e.exerciseId !== exId),
+      })),
+    });
+  }
+
+  function deleteRoutine(routineId: string) {
+    if (!confirm("Delete this routine?")) return;
+    update({
+      ...state,
+      routines: state.routines.filter((r) => r.id !== routineId),
     });
   }
 
@@ -280,7 +311,7 @@ function LibraryTab({
       </section>
 
       {/* Focus list */}
-      <section>
+      <section className="mb-8">
         <h2 className={sectionTitle}>
           Focuses &amp; Exercises ({state.focuses.length})
         </h2>
@@ -387,6 +418,61 @@ function LibraryTab({
           })}
         </div>
       </section>
+
+      {/* Routines */}
+      <section>
+        <h2 className={sectionTitle}>
+          Saved Routines ({state.routines.length})
+        </h2>
+        {state.routines.length === 0 ? (
+          <p className="text-[#8b949e] text-[0.88rem] text-center py-6">
+            No routines saved yet. Build a plan and save it as a routine to
+            reuse it each week.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {state.routines.map((routine) => (
+              <div key={routine.id} className={cardClass}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-[0.95rem]">
+                    {routine.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => deleteRoutine(routine.id)}
+                    title="Delete routine"
+                    className={btnDanger}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {routine.entries.map((entry) => {
+                    const focus = state.focuses.find(
+                      (f) => f.id === entry.focusId
+                    );
+                    const exercise = state.exercises.find(
+                      (ex) => ex.id === entry.exerciseId
+                    );
+                    return (
+                      <div
+                        key={entry.focusId + entry.exerciseId}
+                        className="flex items-center gap-2 text-[0.85rem]"
+                      >
+                        <span className="text-[#484f58]">·</span>
+                        <span>{exercise?.name ?? "(deleted)"}</span>
+                        <span className="text-[#484f58] text-[0.75rem]">
+                          — {focus?.name ?? "(deleted)"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -420,6 +506,10 @@ function PlanTab({
     return map;
   });
 
+  // Save-as-routine inline form state
+  const [savingRoutine, setSavingRoutine] = useState(false);
+  const [routineName, setRoutineName] = useState("");
+
   // Sync when date changes
   function changeDate(newDate: string) {
     setPlanDate(newDate);
@@ -435,6 +525,27 @@ function PlanTab({
       setSelectedFocusIds(new Set());
       setChosenExercises({});
     }
+    setSavingRoutine(false);
+    setRoutineName("");
+  }
+
+  function applyRoutine(routineId: string) {
+    const routine = state.routines.find((r) => r.id === routineId);
+    if (!routine) return;
+    const newSelected = new Set<string>();
+    const newChosen: Record<string, string> = {};
+    for (const entry of routine.entries) {
+      // Only apply if both focus and exercise still exist
+      const focusExists = state.focuses.some((f) => f.id === entry.focusId);
+      const exExists = state.exercises.some((ex) => ex.id === entry.exerciseId);
+      if (focusExists && exExists) {
+        newSelected.add(entry.focusId);
+        newChosen[entry.focusId] = entry.exerciseId;
+      }
+    }
+    setSelectedFocusIds(newSelected);
+    setChosenExercises(newChosen);
+    setSavingRoutine(false);
   }
 
   function toggleFocus(focusId: string) {
@@ -454,23 +565,25 @@ function PlanTab({
     setChosenExercises({ ...chosenExercises, [focusId]: exerciseId });
   }
 
-  function saveSession() {
-    const entries: SessionEntry[] = [];
+  function buildEntries() {
+    const entries: { focusId: string; exerciseId: string }[] = [];
     for (const focusId of selectedFocusIds) {
       const exId = chosenExercises[focusId];
-      if (exId) {
-        entries.push({ focusId, exerciseId: exId, done: false });
-      }
+      if (exId) entries.push({ focusId, exerciseId: exId });
     }
+    return entries;
+  }
+
+  function saveSession() {
+    const entries = buildEntries();
     if (entries.length === 0) return;
 
     if (existingSession) {
-      // Preserve done status for unchanged entries
       const updatedEntries = entries.map((e) => {
         const prev = existingSession.entries.find(
           (p) => p.focusId === e.focusId && p.exerciseId === e.exerciseId
         );
-        return prev ? { ...e, done: prev.done } : e;
+        return prev ? { ...prev } : { ...e, done: false };
       });
       update({
         ...state,
@@ -484,10 +597,21 @@ function PlanTab({
       const session: TrainingSession = {
         id: genId(),
         date: planDate,
-        entries,
+        entries: entries.map((e) => ({ ...e, done: false })),
       };
       update({ ...state, sessions: [...state.sessions, session] });
     }
+  }
+
+  function confirmSaveRoutine() {
+    const name = routineName.trim();
+    if (!name) return;
+    const entries = buildEntries();
+    if (entries.length === 0) return;
+    const routine: Routine = { id: genId(), name, entries };
+    update({ ...state, routines: [...state.routines, routine] });
+    setSavingRoutine(false);
+    setRoutineName("");
   }
 
   function toggleDone(focusId: string, exerciseId: string) {
@@ -527,11 +651,7 @@ function PlanTab({
 
   // Check if current plan differs from saved session
   const hasUnsavedChanges = (() => {
-    const entries: { focusId: string; exerciseId: string }[] = [];
-    for (const focusId of selectedFocusIds) {
-      const exId = chosenExercises[focusId];
-      if (exId) entries.push({ focusId, exerciseId: exId });
-    }
+    const entries = buildEntries();
     if (!existingSession) return entries.length > 0;
     if (entries.length !== existingSession.entries.length) return true;
     return entries.some(
@@ -541,6 +661,9 @@ function PlanTab({
         )
     );
   })();
+
+  const currentEntries = buildEntries();
+  const canSaveAsRoutine = currentEntries.length > 0;
 
   if (state.focuses.length === 0) {
     return (
@@ -568,6 +691,25 @@ function PlanTab({
           className={`${inputClass} w-full`}
         />
       </section>
+
+      {/* Apply routine */}
+      {state.routines.length > 0 && (
+        <section className="mb-6">
+          <h2 className={sectionTitle}>Apply Routine</h2>
+          <div className="flex gap-2 flex-wrap">
+            {state.routines.map((routine) => (
+              <button
+                key={routine.id}
+                type="button"
+                onClick={() => applyRoutine(routine.id)}
+                className="bg-[#21262d] hover:bg-[#30363d] text-[#e6edf3] rounded-[10px] px-3 py-2 text-[0.82rem] font-semibold transition-colors border border-[#30363d] cursor-pointer"
+              >
+                {routine.name}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* If session exists, show workout view */}
       {existingSession && !hasUnsavedChanges && (
@@ -721,15 +863,71 @@ function PlanTab({
         </div>
       </section>
 
-      {/* Save button */}
+      {/* Save session button */}
       {hasUnsavedChanges && (
         <button
           type="button"
           onClick={saveSession}
-          className={`${btnPrimary} w-full py-3 text-[0.95rem]`}
+          className={`${btnPrimary} w-full py-3 text-[0.95rem] mb-3`}
         >
           {existingSession ? "Update Session" : "Create Session"}
         </button>
+      )}
+
+      {/* Save as routine */}
+      {canSaveAsRoutine && (
+        <div>
+          {!savingRoutine ? (
+            <button
+              type="button"
+              onClick={() => setSavingRoutine(true)}
+              className="w-full py-2.5 text-[0.85rem] font-semibold text-[#8b949e] hover:text-[#e6edf3] border border-dashed border-[#30363d] hover:border-[#484f58] rounded-[10px] transition-colors cursor-pointer bg-transparent"
+            >
+              Save as Routine…
+            </button>
+          ) : (
+            <div className={`${cardClass} flex flex-col gap-3`}>
+              <p className="text-[0.82rem] text-[#8b949e]">
+                Save this plan as a reusable routine:
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={routineName}
+                  onChange={(e) => setRoutineName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      confirmSaveRoutine();
+                    }
+                    if (e.key === "Escape") setSavingRoutine(false);
+                  }}
+                  placeholder="e.g. Leg Day"
+                  autoFocus
+                  className={`flex-1 ${inputClass}`}
+                />
+                <button
+                  type="button"
+                  onClick={confirmSaveRoutine}
+                  disabled={!routineName.trim()}
+                  className={`${btnPrimary} disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSavingRoutine(false);
+                    setRoutineName("");
+                  }}
+                  className="text-[#8b949e] hover:text-[#e6edf3] px-3 py-2 text-[0.85rem] cursor-pointer border-0 bg-transparent"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
