@@ -8,6 +8,7 @@ interface Task {
   name: string;
   freq: Freq;
   created: string;
+  totalDuration?: number; // target number of days for the task
 }
 
 interface AppState {
@@ -169,6 +170,30 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+// ---- Completion progress ----
+function getCompletionProgress(
+  state: AppState,
+  task: Task
+): { logged: number; total: number } | null {
+  if (!task.totalDuration) return null;
+  const start = task.created.slice(0, 10);
+  const endDate = addDays(start, task.totalDuration - 1);
+  const today = todayStr();
+  const cap = today < endDate ? today : endDate;
+
+  let total = 0;
+  let logged = 0;
+  let d = start;
+  while (d <= cap) {
+    if (isTaskDue(task, d)) {
+      total++;
+      if (state.logs[d]?.[task.id]) logged++;
+    }
+    d = addDays(d, 1);
+  }
+  return { logged, total };
+}
+
 // ---- Gear icon ----
 function GearIcon() {
   return (
@@ -212,6 +237,7 @@ export default function App() {
   const [manageOpen, setManageOpen] = useState(false);
   const [taskName, setTaskName] = useState("");
   const [taskFreq, setTaskFreq] = useState<Freq>("daily");
+  const [taskDuration, setTaskDuration] = useState("");
   const [calYear, setCalYear] = useState(parseInt(todayParts[0]));
   const [calMonth, setCalMonth] = useState(parseInt(todayParts[1]) - 1);
 
@@ -255,14 +281,17 @@ export default function App() {
     e.preventDefault();
     const name = taskName.trim();
     if (!name) return;
+    const duration = parseInt(taskDuration);
     const newTask: Task = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name,
       freq: taskFreq,
       created: new Date().toISOString(),
+      ...(duration > 0 ? { totalDuration: duration } : {}),
     };
     updateState({ ...state, tasks: [...state.tasks, newTask] });
     setTaskName("");
+    setTaskDuration("");
   }
 
   // Calendar navigation
@@ -354,6 +383,10 @@ export default function App() {
               const logEntry = todayLog[task.id];
               const done = !!logEntry;
               const streak = getStreak(state, task.id);
+              const progress = getCompletionProgress(state, task);
+              const pct = progress
+                ? Math.round((progress.logged / Math.max(progress.total, 1)) * 100)
+                : null;
               return (
                 <div
                   key={task.id}
@@ -378,10 +411,29 @@ export default function App() {
                     </div>
                     <div className="text-[0.75rem] text-[#8b949e] mt-0.5">
                       {capitalize(task.freq)}
+                      {task.totalDuration && (
+                        <span className="ml-1.5">· {task.totalDuration}d goal</span>
+                      )}
                     </div>
                     {done && (
                       <div className="text-[0.72rem] text-[#3fb950] mt-0.5">
                         Logged {logEntry}
+                      </div>
+                    )}
+                    {progress !== null && pct !== null && (
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <div className="flex-1 h-1 bg-[#30363d] rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${pct}%`,
+                              backgroundColor: pct >= 100 ? "#3fb950" : "#58a6ff",
+                            }}
+                          />
+                        </div>
+                        <span className="text-[0.7rem] text-[#8b949e] tabular-nums w-8 text-right">
+                          {pct}%
+                        </span>
                       </div>
                     )}
                   </div>
@@ -424,6 +476,14 @@ export default function App() {
                 <option value="weekdays">Weekdays</option>
                 <option value="weekends">Weekends</option>
               </select>
+              <input
+                type="number"
+                value={taskDuration}
+                onChange={(e) => setTaskDuration(e.target.value)}
+                placeholder="Days (optional)"
+                min="1"
+                className="w-[130px] bg-[#161b22] border border-[#30363d] rounded-[10px] text-[#e6edf3] px-3.5 py-2.5 text-[0.9rem] outline-none focus:border-[#58a6ff]"
+              />
               <button
                 type="submit"
                 className="bg-[#58a6ff] hover:bg-[#79c0ff] text-white rounded-[10px] px-[18px] py-2.5 text-[0.85rem] font-semibold transition-colors border-0 cursor-pointer"
@@ -542,6 +602,10 @@ export default function App() {
               {dueDateTasks.map((task) => {
                 const logEntry = dayLog[task.id];
                 const done = !!logEntry;
+                const progress = getCompletionProgress(state, task);
+                const pct = progress
+                  ? Math.round((progress.logged / Math.max(progress.total, 1)) * 100)
+                  : null;
                 return (
                   <div
                     key={task.id}
@@ -561,10 +625,29 @@ export default function App() {
                       </div>
                       <div className="text-[0.75rem] text-[#8b949e] mt-0.5">
                         {capitalize(task.freq)}
+                        {task.totalDuration && (
+                          <span className="ml-1.5">· {task.totalDuration}d goal</span>
+                        )}
                       </div>
                       {done && (
                         <div className="text-[0.72rem] text-[#3fb950] mt-0.5">
                           Logged {logEntry}
+                        </div>
+                      )}
+                      {progress !== null && pct !== null && (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <div className="flex-1 h-1 bg-[#30363d] rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all"
+                              style={{
+                                width: `${pct}%`,
+                                backgroundColor: pct >= 100 ? "#3fb950" : "#58a6ff",
+                              }}
+                            />
+                          </div>
+                          <span className="text-[0.7rem] text-[#8b949e] tabular-nums w-8 text-right">
+                            {pct}%
+                          </span>
                         </div>
                       )}
                     </div>
