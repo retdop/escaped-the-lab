@@ -52,10 +52,85 @@ build: {
 
 | File | Trigger | Does |
 |---|---|---|
-| `.github/workflows/ci.yml` | PR to `main` | Builds all compiled apps, validates HTML |
+| `.github/workflows/ci.yml` | PR to `main` | Builds all compiled apps, runs unit tests, validates HTML |
 | `.github/workflows/deploy.yml` | Push to `main` | Builds, copies artifacts, uploads whole repo as Pages artifact, deploys |
 
 Both workflows use `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` to pin GitHub Actions JS runtime.
+
+## Testing
+
+### Stack
+
+Compiled apps use **Vitest** (runs through Vite — zero extra config overhead). No Jest, no Playwright, no Testing Library unless a specific need arises.
+
+- Test command: `pnpm test` (runs `vitest run` — single pass, CI-friendly)
+- Watch mode: `pnpm test:watch`
+- Test files live in `src/__tests__/` inside each source app
+
+### When to add tests
+
+**Always test:**
+- Pure utility functions with non-trivial logic (scheduling, date math, scoring algorithms, string normalization)
+- Data-transformation functions that could silently produce wrong output (e.g. answer-matching with diacritics, spaced-repetition weighting)
+- localStorage persistence round-trips
+
+**Skip tests for:**
+- Presentational/UI wrapper components (Radix primitives, Tailwind variants)
+- Functions that are just `return x.something` with no logic
+- Vanilla apps (no build tooling, not worth the setup overhead)
+
+### How to make functions testable in new apps
+
+Keep business logic in a separate `src/utils.ts` (or `src/logic.ts`) file and export each function. Do not bury logic inside component bodies — it can't be imported by test files. The component file imports from utils.
+
+### Vitest config template
+
+Add this to `vite.config.ts` (add `/// <reference types="vitest" />` at the top):
+
+```ts
+test: {
+  environment: "node",       // pure util tests; use "jsdom" if localStorage is needed
+  globals: true,
+  setupFiles: ["./src/__tests__/setup.ts"],   // omit if no global mocks needed
+},
+```
+
+### localStorage mock (setup.ts template)
+
+```ts
+import { beforeEach, vi } from "vitest";
+const store: Record<string, string> = {};
+beforeEach(() => { Object.keys(store).forEach((k) => delete store[k]); });
+vi.stubGlobal("localStorage", {
+  getItem: (k: string) => store[k] ?? null,
+  setItem: (k: string, v: string) => { store[k] = v; },
+  removeItem: (k: string) => { delete store[k]; },
+  clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
+});
+```
+
+### Mocking `Date` in tests
+
+Functions that call `new Date()` internally must be time-pinned for deterministic tests:
+
+```ts
+vi.useFakeTimers();
+vi.setSystemTime(new Date("2025-06-10T12:00:00"));
+// ... test body ...
+vi.useRealTimers();
+```
+
+### CI integration
+
+Each app's test step in `ci.yml`:
+
+```yaml
+- name: Test my-app
+  working-directory: my-app-source
+  run: |
+    pnpm install --frozen-lockfile
+    pnpm test
+```
 
 ## Adding a new vanilla app
 

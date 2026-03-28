@@ -43,8 +43,11 @@ Compiled JS/CSS is excluded via `.gitignore` and generated fresh by CI on every 
 `styles.css` uses CSS custom properties (`--bg-primary`, `--accent`, etc.) matching GitHub's dark palette. New apps should ideally follow the same visual language.
 
 ### Two-stage CI/CD
-- **CI workflow** (runs on pull requests): builds all React apps and validates all HTML files with `html-validate`.
+- **CI workflow** (runs on pull requests): builds all React apps, runs unit tests, and validates all HTML files with `html-validate`.
 - **Deploy workflow** (runs on push to `main`): rebuilds everything, copies artifacts into `projects/`, uploads the whole repo as a Pages artifact, and deploys to GitHub Pages.
+
+### Testing
+Compiled apps use [Vitest](https://vitest.dev/) for unit tests. Business logic lives in `src/utils.ts` (or similar) so it can be imported and tested independently of React components. Tests run as part of CI on every pull request.
 
 ## Adding a new project
 
@@ -89,6 +92,14 @@ Each compiled app has its own dev server:
 cd task-logger-source   # or mots-fleches-source-app / routine-tracker-source
 pnpm install
 pnpm dev
+```
+
+### Running tests
+
+```sh
+cd task-logger-source        # or mots-fleches-source-app
+pnpm test                    # single run (same as CI)
+pnpm test:watch              # re-runs on file changes
 ```
 
 To preview integrated in the full site, build and serve from the root:
