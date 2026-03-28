@@ -48,6 +48,14 @@ jobs:
           cp dist/task-logger.js ../projects/task-logger.js
           cp dist/task-logger.css ../projects/task-logger.css
 
+      - name: Build routine-tracker
+        working-directory: routine-tracker-source
+        run: |
+          pnpm install --frozen-lockfile
+          npx vite build
+          cp dist/routine-tracker.js ../projects/routine-tracker.js
+          cp dist/routine-tracker.css ../projects/routine-tracker.css
+
       - name: Setup Pages
         uses: actions/configure-pages@v6.0.0
 
