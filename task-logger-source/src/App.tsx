@@ -290,15 +290,11 @@ export default function App() {
         delete newLogs[dateStr];
       }
     } else {
-      if (dateStr === today) {
-        const now = new Date();
-        newLogs[dateStr][taskId] = now.toLocaleTimeString(undefined, {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-      } else {
-        newLogs[dateStr][taskId] = "retroactively";
-      }
+      const now = new Date();
+      newLogs[dateStr][taskId] = now.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     }
     updateState({ ...state, logs: newLogs });
   }
