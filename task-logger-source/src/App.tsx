@@ -194,6 +194,12 @@ function getCompletionProgress(
     }
     d = addDays(d, 1);
   }
+  // Also count retroactive logs for dates before task creation
+  for (const dateStr of Object.keys(state.logs)) {
+    if (dateStr < start && isTaskDue(task, dateStr) && state.logs[dateStr][task.id]) {
+      logged++;
+    }
+  }
   return { logged, total };
 }
 
