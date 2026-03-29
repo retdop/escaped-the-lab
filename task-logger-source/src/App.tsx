@@ -35,7 +35,7 @@ interface CalCell {
 }
 
 function getCalendarGrid(year: number, month: number): CalCell[] {
-  const firstDow = new Date(year, month, 1).getDay();
+  const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = getMonthDays(year, month);
   const prevMonthDays =
     month === 0 ? getMonthDays(year - 1, 11) : getMonthDays(year, month - 1);
@@ -638,7 +638,7 @@ export default function App() {
 
           {/* Calendar grid */}
           <div className="grid grid-cols-7 gap-0.5 mb-4">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
               <div
                 key={d}
                 className="text-[0.68rem] text-[#8b949e] text-center py-1 font-semibold uppercase"
