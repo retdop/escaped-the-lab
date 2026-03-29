@@ -214,10 +214,14 @@ export default function App() {
     unseen: WORDS.filter(w => !stats[wordKey(w)]).length,
     facileCount: WORDS.filter(w => stats[wordKey(w)]?.f).length,
   }), [stats]);
-  const sortedWords = useMemo(() => [...WORDS].sort((a, b) => {
-    const sa = stats[wordKey(a)] || { e: 0, s: 0 }, sb = stats[wordKey(b)] || { e: 0, s: 0 };
-    return (sa.e + sa.s > 0 ? sa.s / (sa.e + sa.s) : -1) - (sb.e + sb.s > 0 ? sb.s / (sb.e + sb.s) : -1);
-  }), [stats]);
+  const sortedWords = useMemo(() => {
+    const cats = selThemes ? THEMES.filter(t => selThemes.includes(t.id)).flatMap(t => t.cats) : null;
+    const base = cats ? WORDS.filter(w => cats.includes(w.cat)) : WORDS;
+    return [...base].sort((a, b) => {
+      const sa = stats[wordKey(a)] || { e: 0, s: 0 }, sb = stats[wordKey(b)] || { e: 0, s: 0 };
+      return (sa.e + sa.s > 0 ? sa.s / (sa.e + sa.s) : -1) - (sb.e + sb.s > 0 ? sb.s / (sb.e + sb.s) : -1);
+    });
+  }, [stats, selThemes]);
   const current = deck[idx];
   const done = started && idx >= deck.length && deck.length > 0;
   const emptyPool = started && deck.length === 0;
@@ -441,7 +445,7 @@ export default function App() {
         <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
           <CollapsibleTrigger className="w-full flex items-center justify-center gap-1 text-xs text-muted-foreground italic hover:text-foreground transition-colors cursor-pointer py-1">
             <ChevronDown className={`w-3 h-3 transition-transform ${detailsOpen ? "rotate-180" : ""}`} />
-            {detailsOpen ? "Masquer le détail" : "Tous les mots"}
+            {detailsOpen ? "Masquer le détail" : selThemes ? `Mots sélectionnés (${sortedWords.length})` : "Tous les mots"}
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="flex gap-2 mt-2 mb-3">
