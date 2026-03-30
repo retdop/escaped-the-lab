@@ -245,3 +245,4 @@ export function buildSmartDeck(words: Word[], stats: Stats): { word: Word; def: 
 }
 
 export const STORAGE_KEY = "croises-stats-v3";
+export const ACTIVITY_KEY = "croises-activity-v1";
