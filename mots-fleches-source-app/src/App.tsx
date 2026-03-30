@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { WORDS, THEMES, CAT_LABELS, normalize, wordKey, wiktUrl, buildSmartDeck, shuffle, STORAGE_KEY, type Word, type Stats } from "./data";
+import { WORDS, THEMES, CAT_LABELS, normalize, wordKey, wiktUrl, buildSmartDeck, shuffle, STORAGE_KEY, ACTIVITY_KEY, type Word, type Stats } from "./data";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,9 @@ export default function App() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
+  const [activityLog, setActivityLog] = useState<Record<string, number>>({});
+  const activityRef = useRef<Record<string, number>>({});
+  const [mcMode, setMcMode] = useState(false);
 
   const [sessionLength, setSessionLength] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
@@ -132,6 +135,10 @@ export default function App() {
           const r = await storageApi.current.get(STORAGE_KEY);
           if (r?.value) s = JSON.parse(r.value);
         } catch {}
+        try {
+          const ra = await storageApi.current.get(ACTIVITY_KEY);
+          if (ra?.value) { const al = JSON.parse(ra.value); setActivityLog(al); activityRef.current = al; }
+        } catch {}
       }
       setStats(s);
       statsRef.current = s;
@@ -140,13 +147,15 @@ export default function App() {
       setLoading(false);
     })();
     const flush = () => {
-      if (document.hidden && statsRef.current && storageApi.current) {
+      if (document.hidden && storageApi.current) {
         try { storageApi.current.set(STORAGE_KEY, JSON.stringify(statsRef.current)); } catch {}
+        try { storageApi.current.set(ACTIVITY_KEY, JSON.stringify(activityRef.current)); } catch {}
       }
     };
     const beforeUnload = () => {
-      if (statsRef.current && storageApi.current) {
+      if (storageApi.current) {
         try { storageApi.current.set(STORAGE_KEY, JSON.stringify(statsRef.current)); } catch {}
+        try { storageApi.current.set(ACTIVITY_KEY, JSON.stringify(activityRef.current)); } catch {}
       }
     };
     document.addEventListener("visibilitychange", flush);
@@ -194,6 +203,7 @@ export default function App() {
     if (ok) setScore(s => s + (showHint ? 0.5 : 1)); else setSessionErrors(p => [...p, item]);
     playSound(ok ? 'correct' : 'wrong');
     haptic(ok ? 'correct' : 'wrong');
+    logActivity();
     setLastResult({ word: cur, def: item.def, ok, streak: upd.streak });
     advance();
   };
@@ -206,6 +216,7 @@ export default function App() {
     setSessionErrors(p => [...p, item]);
     playSound('wrong');
     haptic('wrong');
+    logActivity();
     setLastResult({ word: cur, def: item.def, ok: false, skipped: true, streak: 0 });
     advance();
   };
@@ -226,6 +237,16 @@ export default function App() {
     save(ns);
     setLastResult(null);
   }, [save]);
+
+  const logActivity = useCallback(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const updated = { ...activityRef.current, [today]: (activityRef.current[today] || 0) + 1 };
+    activityRef.current = updated;
+    setActivityLog(updated);
+    if (storageApi.current) {
+      storageApi.current.set(ACTIVITY_KEY, JSON.stringify(updated)).catch(() => {});
+    }
+  }, []);
 
   function exportStats() {
     const json = JSON.stringify(stats, null, 2);
@@ -273,6 +294,29 @@ export default function App() {
       practicedToday: WORDS.filter(w => { const s = stats[wordKey(w)]; return s?.last && s.last >= ts; }).length,
     };
   }, [stats]);
+  const mcOptions = useMemo(() => {
+    if (!mcMode || !current) return null;
+    const pool = computePool(selThemes, onlyHard);
+    const others = shuffle(pool.filter(w => w !== current.word)).slice(0, 3).map(w => w.mot.split("/")[0].trim());
+    if (others.length < 3) return null;
+    return shuffle([current.word.mot.split("/")[0].trim(), ...others]);
+  }, [mcMode, current, idx, computePool, selThemes, onlyHard]);
+
+  const handleMcClick = useCallback((opt: string) => {
+    const item = deck[idx];
+    const cur = item.word, key = wordKey(cur);
+    const ok = cur.mot.split("/").map(m => normalize(m.trim())).includes(normalize(opt));
+    const prev = stats[key] || { e: 0, s: 0, last: 0, streak: 0 };
+    const upd = { e: prev.e + (ok ? 0 : 1), s: prev.s + (ok ? 1 : 0), last: Date.now(), streak: ok ? (prev.streak || 0) + 1 : 0 };
+    save({ ...stats, [key]: upd });
+    if (ok) setScore(s => s + 1); else setSessionErrors(p => [...p, item]);
+    playSound(ok ? 'correct' : 'wrong');
+    haptic(ok ? 'correct' : 'wrong');
+    logActivity();
+    setLastResult({ word: cur, def: item.def, ok, streak: upd.streak });
+    advance();
+  }, [deck, idx, stats, save, playSound, haptic, logActivity]);
+
   const sortedWords = useMemo(() => {
     const cats = selThemes ? THEMES.filter(t => selThemes.includes(t.id)).flatMap(t => t.cats) : null;
     const base = cats ? WORDS.filter(w => cats.includes(w.cat)) : WORDS;
@@ -360,8 +404,8 @@ export default function App() {
           >Difficiles ✗</Toggle>
         </div>
 
-        {/* Session length */}
-        <div className="flex gap-1.5 justify-center mb-4">
+        {/* Session length + mode */}
+        <div className="flex gap-1.5 justify-center mb-4 flex-wrap">
           {([10, 25, null] as (number | null)[]).map(len => (
             <Toggle key={len ?? 'all'} pressed={sessionLength === len}
               onPressedChange={() => { setSessionLength(len); restart(computePool(selThemes, onlyHard), len); }}
@@ -369,6 +413,11 @@ export default function App() {
               className="h-6 px-2.5 text-[10px] font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground rounded-sm"
             >{len ? `${len} mots` : 'Tout'}</Toggle>
           ))}
+          <div className="w-px bg-border self-stretch" />
+          <Toggle pressed={mcMode} onPressedChange={() => setMcMode(m => !m)}
+            size="sm" variant="outline"
+            className="h-6 px-2.5 text-[10px] font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground rounded-sm"
+          >QCM</Toggle>
         </div>
 
         {/* Result banner */}
@@ -432,50 +481,68 @@ export default function App() {
                 {showHint && <span className="text-destructive ml-2">— commence par « {current.word.mot[0]} »</span>}
               </p>
 
-              {/* Input */}
-              <input
-                ref={inputRef}
-                value={input}
-                onChange={e => setInput(e.target.value.toUpperCase())}
-                onKeyDown={e => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    input.trim() ? submit() : skip();
-                  } else if (e.key === "Tab") {
-                    e.preventDefault();
-                    if (!showHint) setShowHint(true);
-                  }
-                }}
-                autoFocus
-                enterKeyHint="send"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="characters"
-                spellCheck={false}
-                placeholder=""
-                maxLength={current.word.lettres + 2}
-                className="w-full max-w-[240px] mx-auto block text-center text-2xl font-bold tracking-[6px] py-3 px-4 rounded-sm border-2 border-border bg-background text-foreground outline-none focus:border-foreground transition-colors"
-                style={{ fontFamily: "'JetBrains Mono', monospace" }}
-              />
-
-              <div className="flex gap-2 justify-center mt-5">
-                {!showHint && (
-                  <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1"
-                    onClick={() => { setShowHint(true); inputRef.current?.focus(); }}>
-                    <Lightbulb className="w-3 h-3" /> Indice
-                    <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">Tab</kbd>
+              {/* Input / MC */}
+              {mcMode && mcOptions ? (
+                <div className="grid grid-cols-2 gap-2 max-w-[280px] mx-auto mt-2">
+                  {mcOptions.map(opt => (
+                    <Button key={opt} variant="outline" size="sm"
+                      className="text-sm font-bold tracking-[3px] h-10 rounded-sm"
+                      style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                      onClick={() => handleMcClick(opt)}
+                    >{opt}</Button>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <input
+                    ref={inputRef}
+                    value={input}
+                    onChange={e => setInput(e.target.value.toUpperCase())}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        input.trim() ? submit() : skip();
+                      } else if (e.key === "Tab") {
+                        e.preventDefault();
+                        if (!showHint) setShowHint(true);
+                      }
+                    }}
+                    autoFocus
+                    enterKeyHint="send"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    placeholder=""
+                    maxLength={current.word.lettres + 2}
+                    className="w-full max-w-[240px] mx-auto block text-center text-2xl font-bold tracking-[6px] py-3 px-4 rounded-sm border-2 border-border bg-background text-foreground outline-none focus:border-foreground transition-colors"
+                    style={{ fontFamily: "'JetBrains Mono', monospace" }}
+                  />
+                  <div className="flex gap-2 justify-center mt-5">
+                    {!showHint && (
+                      <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1"
+                        onClick={() => { setShowHint(true); inputRef.current?.focus(); }}>
+                        <Lightbulb className="w-3 h-3" /> Indice
+                        <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">Tab</kbd>
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={skip}>
+                      <SkipForward className="w-3 h-3" /> Passer
+                      <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">⏎</kbd>
+                    </Button>
+                    <Button size="sm" className="text-xs rounded-sm gap-1" disabled={!input.trim()} onClick={submit}>
+                      <Check className="w-3 h-3" /> Valider
+                      <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">⏎</kbd>
+                    </Button>
+                  </div>
+                </>
+              )}
+              <div className="flex justify-center mt-2 gap-2">
+                {mcMode && mcOptions && (
+                  <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={skip}>
+                    <SkipForward className="w-3 h-3" /> Passer
                   </Button>
                 )}
-                <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={skip}>
-                  <SkipForward className="w-3 h-3" /> Passer
-                  <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">⏎</kbd>
-                </Button>
-                <Button size="sm" className="text-xs rounded-sm gap-1" disabled={!input.trim()} onClick={submit}>
-                  <Check className="w-3 h-3" /> Valider
-                  <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">⏎</kbd>
-                </Button>
-              </div>
-              <div className="flex justify-center mt-2">
                 <Button variant="ghost" size="sm" className="text-xs rounded-sm gap-1 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                   onClick={markFacile}>
                   <ThumbsUp className="w-3 h-3" /> Facile
@@ -553,6 +620,29 @@ export default function App() {
                 Réinitialiser
               </Button>
             </div>
+            {Object.keys(activityLog).length > 0 && (
+              <div className="mb-3">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-[2px] mb-1.5">Activité (12 semaines)</p>
+                <div className="flex gap-0.5">
+                  {Array.from({ length: 12 }, (_, wi) => (
+                    <div key={wi} className="flex flex-col gap-0.5">
+                      {Array.from({ length: 7 }, (_, di) => {
+                        const daysAgo = 83 - (wi * 7 + di);
+                        const d = new Date(); d.setDate(d.getDate() - daysAgo);
+                        const ds = d.toISOString().slice(0, 10);
+                        const n = activityLog[ds] || 0;
+                        return (
+                          <div key={di}
+                            className={`w-2.5 h-2.5 rounded-[2px] ${n === 0 ? 'bg-muted' : n < 5 ? 'bg-[hsl(153,30%,65%)]' : n < 15 ? 'bg-[hsl(153,40%,40%)]' : 'bg-[hsl(153,50%,22%)]'}`}
+                            title={`${ds}: ${n}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <ScrollArea className="h-72">
               <div className="space-y-0">
                 {sortedWords.map((w) => {
