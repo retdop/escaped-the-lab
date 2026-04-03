@@ -56,7 +56,7 @@ export const WORDS: Word[] = [
   { mot: "PÔ", defs: ["Plus long fleuve d'Italie", "Il traverse la plaine padane"], lettres: 2, cat: "géo" },
   { mot: "RÂ / RÊ", defs: ["Dieu-soleil égyptien", "Divinité solaire à tête de faucon"], lettres: 2, cat: "mytho" },
   { mot: "RAD", defs: ["Ancienne unité de dose absorbée", "Mesure d'irradiation remplacée par le gray"], lettres: 3, cat: "science" },
-  { mot: "RAT", defs: ["Rongeur fouisseur des villes", "Petit mammifère à longue queue"], lettres: 3, cat: "animal" },
+  { mot: "RAT", defs: ["Rongeur fouisseur des villes", "Petit mammifère à longue queue", "Petit __ de l'Opéra : jeune danseur de ballet"], lettres: 3, cat: "animal" },
   { mot: "RÉA", defs: ["Poulie de renvoi", "Roue de poulie à gorge", "Service de réanimation (abrév.)"], lettres: 3, cat: "objet" },
   { mot: "RÉER", defs: ["Bramer pour le cerf en rut", "Cri du cerf à l'automne"], lettres: 4, cat: "animal" },
   { mot: "REG", defs: ["Désert de pierres", "Étendue caillouteuse saharienne"], lettres: 3, cat: "géo" },
