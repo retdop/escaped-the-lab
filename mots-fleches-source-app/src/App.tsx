@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Toggle } from "@/components/ui/toggle";
-import { ExternalLink, ChevronDown, RotateCcw, ArrowRight, Lightbulb, SkipForward, Check, ThumbsUp, EyeOff, Volume2, VolumeX } from "lucide-react";
+import { ExternalLink, ChevronDown, RotateCcw, ArrowRight, Lightbulb, SkipForward, Check, ThumbsUp, Volume2, VolumeX } from "lucide-react";
 
 interface DeckItem { word: Word; def: string; }
 interface LastResult { word: Word; def: string; ok: boolean; streak: number; skipped?: boolean; facile?: boolean; notInterested?: boolean; }
@@ -515,7 +515,7 @@ export default function App() {
                     onKeyDown={e => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        input.trim() ? submit() : skip();
+                        input.trim() ? submit() : markNotInterested();
                       } else if (e.key === "Tab") {
                         e.preventDefault();
                         if (!showHint) setShowHint(true);
@@ -540,7 +540,7 @@ export default function App() {
                         <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">Tab</kbd>
                       </Button>
                     )}
-                    <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={skip}>
+                    <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={markNotInterested}>
                       <SkipForward className="w-3 h-3" /> Passer
                       <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">⏎</kbd>
                     </Button>
@@ -553,18 +553,13 @@ export default function App() {
               )}
               <div className="flex justify-center mt-2 gap-2">
                 {mcMode && mcOptions && (
-                  <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={skip}>
+                  <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={markNotInterested}>
                     <SkipForward className="w-3 h-3" /> Passer
                   </Button>
                 )}
                 <Button variant="ghost" size="sm" className="text-xs rounded-sm gap-1 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
                   onClick={markFacile}>
                   <ThumbsUp className="w-3 h-3" /> Facile
-                </Button>
-                <Button variant="ghost" size="sm" className="text-xs rounded-sm gap-1 text-muted-foreground hover:text-foreground hover:bg-muted"
-                  onClick={markNotInterested}
-                  title="Ce mot ne m'intéresse pas — il apparaîtra très rarement">
-                  <EyeOff className="w-3 h-3" /> Ignorer
                 </Button>
               </div>
             </CardContent>
