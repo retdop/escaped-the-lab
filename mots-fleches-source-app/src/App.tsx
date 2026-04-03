@@ -11,7 +11,7 @@ import { Toggle } from "@/components/ui/toggle";
 import { ExternalLink, ChevronDown, RotateCcw, ArrowRight, Lightbulb, SkipForward, Check, ThumbsUp, Volume2, VolumeX } from "lucide-react";
 
 interface DeckItem { word: Word; def: string; }
-interface LastResult { word: Word; def: string; ok: boolean; streak: number; skipped?: boolean; facile?: boolean; }
+interface LastResult { word: Word; def: string; ok: boolean; streak: number; skipped?: boolean; facile?: boolean; notInterested?: boolean; }
 
 export default function App() {
   const [stats, setStats] = useState<Stats>({});
@@ -230,6 +230,15 @@ export default function App() {
     advance();
   };
 
+  const markNotInterested = () => {
+    const item = deck[idx];
+    const cur = item.word, key = wordKey(cur);
+    const prev = stats[key] || { e: 0, s: 0, last: 0, streak: 0 };
+    save({ ...stats, [key]: { ...prev, ni: Date.now() } });
+    setLastResult({ word: cur, def: item.def, ok: false, notInterested: true, streak: prev.streak || 0 });
+    advance();
+  };
+
   const markBurned = useCallback((word: Word) => {
     const key = wordKey(word);
     const prev = statsRef.current[key] || { e: 0, s: 0, last: 0, streak: 0 };
@@ -282,14 +291,15 @@ export default function App() {
   }
 
   const totalW = WORDS.length;
-  const { learned, trouble, unseen, facileCount, burnedCount, practicedToday } = useMemo(() => {
+  const { learned, trouble, unseen, facileCount, niCount, burnedCount, practicedToday } = useMemo(() => {
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const ts = todayStart.getTime();
     return {
       learned: WORDS.filter(w => { const s = stats[wordKey(w)]; return s && !s.f && !s.b && s.s > s.e && s.s + s.e >= 2; }).length,
       trouble: WORDS.filter(w => { const s = stats[wordKey(w)]; return s && !s.f && !s.b && s.e > s.s; }).length,
       unseen: WORDS.filter(w => { const s = stats[wordKey(w)]; return !s || (!s.b && s.s + s.e === 0); }).length,
-      facileCount: WORDS.filter(w => { const s = stats[wordKey(w)]; return !!s?.f && !s.b; }).length,
+      facileCount: WORDS.filter(w => { const s = stats[wordKey(w)]; return !!s?.f && !s.b && !s.ni; }).length,
+      niCount: WORDS.filter(w => { const s = stats[wordKey(w)]; return !!s?.ni && !s.b; }).length,
       burnedCount: WORDS.filter(w => !!stats[wordKey(w)]?.b).length,
       practicedToday: WORDS.filter(w => { const s = stats[wordKey(w)]; return s?.last && s.last >= ts; }).length,
     };
@@ -358,6 +368,7 @@ export default function App() {
             <span><b className="text-destructive">{trouble}</b> difficile{trouble > 1 ? "s" : ""}</span>
             <span><b>{unseen}</b> nouveau{unseen > 1 ? "x" : ""}</span>
             {facileCount > 0 && <span><b className="text-amber-600">{facileCount}</b> facile{facileCount > 1 ? "s" : ""}</span>}
+            {niCount > 0 && <span><b className="text-muted-foreground">{niCount}</b> ignoré{niCount > 1 ? "s" : ""}</span>}
             {burnedCount > 0 && <span><b className="text-[hsl(153,50%,22%)]">{burnedCount}</b> brûlé{burnedCount > 1 ? "s" : ""}</span>}
           </div>
           {practicedToday > 0 && (
@@ -425,14 +436,16 @@ export default function App() {
         {lastResult && (
           <div onClick={() => setLastResult(null)}
             className={`animate-slide-down flex items-center gap-2.5 px-3.5 py-2.5 mb-4 rounded-sm cursor-pointer border-l-4 ${
+              lastResult.notInterested ? "bg-muted border-l-muted-foreground" :
               lastResult.facile ? "bg-amber-50 border-l-amber-500" :
               lastResult.ok ? "bg-[hsl(140,40%,94%)] border-l-[hsl(153,40%,30%)]" : "bg-[hsl(0,60%,95%)] border-l-destructive"
             }`}>
-            <span className={`text-base font-bold tracking-[3px] ${lastResult.facile ? "text-amber-600" : lastResult.ok ? "text-[hsl(153,40%,30%)]" : "text-destructive"}`}
+            <span className={`text-base font-bold tracking-[3px] ${lastResult.notInterested ? "text-muted-foreground" : lastResult.facile ? "text-amber-600" : lastResult.ok ? "text-[hsl(153,40%,30%)]" : "text-destructive"}`}
               style={{ fontFamily: "'JetBrains Mono', monospace" }}>
               {lastResult.word.mot}
             </span>
             <span className="flex-1 text-xs text-foreground italic truncate">{lastResult.def}</span>
+            {lastResult.notInterested && <span className="text-xs text-muted-foreground font-semibold">ignoré</span>}
             {lastResult.facile && <span className="text-xs text-amber-600 font-semibold">facile</span>}
             {!lastResult.facile && lastResult.ok && lastResult.streak >= 3 && lastResult.streak < 5 && (
               <span className="text-xs">🔥{lastResult.streak}</span>
@@ -502,7 +515,7 @@ export default function App() {
                     onKeyDown={e => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        input.trim() ? submit() : skip();
+                        input.trim() ? submit() : markNotInterested();
                       } else if (e.key === "Tab") {
                         e.preventDefault();
                         if (!showHint) setShowHint(true);
@@ -527,7 +540,7 @@ export default function App() {
                         <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">Tab</kbd>
                       </Button>
                     )}
-                    <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={skip}>
+                    <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={markNotInterested}>
                       <SkipForward className="w-3 h-3" /> Passer
                       <kbd className="hidden sm:inline-block ml-1 px-1 py-0.5 text-[9px] font-mono bg-muted rounded border border-border text-muted-foreground">⏎</kbd>
                     </Button>
@@ -540,7 +553,7 @@ export default function App() {
               )}
               <div className="flex justify-center mt-2 gap-2">
                 {mcMode && mcOptions && (
-                  <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={skip}>
+                  <Button variant="outline" size="sm" className="text-xs rounded-sm gap-1" onClick={markNotInterested}>
                     <SkipForward className="w-3 h-3" /> Passer
                   </Button>
                 )}
@@ -649,15 +662,17 @@ export default function App() {
                 {sortedWords.map((w) => {
                   const s = stats[wordKey(w)] || { e: 0, s: 0 };
                   const t = s.e + s.s, pct = t > 0 ? Math.round(s.s / t * 100) : -1;
-                  const isFacile = !!(stats[wordKey(w)]?.f);
+                  const isFacile = !!(stats[wordKey(w)]?.f) && !stats[wordKey(w)]?.ni;
+                  const isNi = !!(stats[wordKey(w)]?.ni) && !stats[wordKey(w)]?.b;
                   return (
                     <div key={wordKey(w)} className="flex items-center gap-2 py-1 border-b border-border text-xs">
                       <span className="min-w-[70px] font-bold tracking-wider" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{w.mot}</span>
                       <span className="flex-1 text-muted-foreground italic truncate">{w.defs[0]}</span>
                       {stats[wordKey(w)]?.b && <span className="text-[10px] text-[hsl(153,50%,22%)] font-bold">brûlé</span>}
-                      {isFacile && !stats[wordKey(w)]?.b && <span className="text-[10px] text-amber-600 font-bold">facile</span>}
+                      {isFacile && <span className="text-[10px] text-amber-600 font-bold">facile</span>}
+                      {isNi && <span className="text-[10px] text-muted-foreground font-bold">ignoré</span>}
                       <span className={`min-w-[30px] text-right text-[10px] font-bold ${
-                        isFacile ? "text-amber-600" : pct < 0 ? "text-muted-foreground/50" : pct >= 80 ? "text-[hsl(153,40%,30%)]" : pct >= 50 ? "text-muted-foreground" : "text-destructive"
+                        isNi ? "text-muted-foreground/50" : isFacile ? "text-amber-600" : pct < 0 ? "text-muted-foreground/50" : pct >= 80 ? "text-[hsl(153,40%,30%)]" : pct >= 50 ? "text-muted-foreground" : "text-destructive"
                       }`}>{pct < 0 ? "—" : `${pct}%`}</span>
                     </div>
                   );
